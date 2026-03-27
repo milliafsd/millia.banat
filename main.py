@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 import sqlite3
 import base64
+import pytz  # for Pakistan time
 
 # --- 1. ڈیٹا بیس سیٹ اپ (للبنات کے لیے نیا نام) ---
 DB_NAME = 'jamia_millia_banat_v1.db'
@@ -52,11 +53,17 @@ def init_db():
 
 init_db()
 
+# ---------- HELPER FUNCTIONS ----------
 @st.cache_data
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8-sig')
 
-# --- امتحانی رپورٹ کا فنکشن ---
+def get_pakistan_time():
+    """Return current datetime in Pakistan Standard Time (UTC+5)."""
+    pst = pytz.timezone('Asia/Karachi')
+    return datetime.now(pst)
+
+# ---------- امتحانی رپورٹ کا فنکشن ----------
 def render_exam_report():
     st.subheader("🎓 امتحانی تعلیمی نظام")
     
@@ -148,10 +155,14 @@ def render_exam_report():
             else:
                 st.info("ابھی تک کوئی امتحان مکمل نہیں ہوا۔")
 
-# --- 2. اسٹائلنگ ---
+# ---------- 2. اسٹائلنگ (اردو فونٹ اور آر ٹی ایل) ----------
 st.set_page_config(page_title="جامعہ ملیہ اسلامیہ للبنات", layout="wide")
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu&display=swap');
+    * {
+        font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Alvi Nastaleeq', 'Nafees Nastaleeq', serif;
+    }
     body {direction: rtl; text-align: right;}
     .stButton>button {background: #1e5631; color: white; border-radius: 8px; font-weight: bold; width: 100%; border: none; padding: 10px;}
     .stButton>button:hover {background: #143e22;}
@@ -165,6 +176,7 @@ st.markdown("""
         header { display: none !important; }
         button { display: none !important; }
         .main-header { border-bottom: none; }
+        body { direction: rtl; text-align: right; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -175,6 +187,40 @@ paras = [f"پارہ {i}" for i in range(1, 31)]
 # --- مرکزی ہیڈر ---
 st.markdown("<div class='main-header'><h1>🕌 جامعہ ملیہ اسلامیہ للبنات</h1><p>اسمارٹ تعلیمی و انتظامی پورٹل (شعبہ طالبات)</p></div>", unsafe_allow_html=True)
 
+# ---------- HTML ڈاؤن لوڈ کا فنکشن (جاوا اسکرپٹ) ----------
+def add_html_download_button():
+    html_code = """
+    <div style="margin-top: 20px;">
+        <button onclick="downloadPageAsHTML()" style="background: #1e5631; color: white; padding: 8px 15px; border-radius: 5px; border: none; width: 100%; cursor: pointer;">📄 صفحہ بطور HTML ڈاؤن لوڈ کریں</button>
+    </div>
+    <script>
+        function downloadPageAsHTML() {
+            // کلیدی مواد کو کاپی کریں (سائیڈ بار کے بغیر)
+            var mainContent = document.querySelector('.main');
+            if (!mainContent) mainContent = document.body;
+            var htmlContent = `<!DOCTYPE html>
+            <html>
+            <head><meta charset="UTF-8"><title>جامعہ ملیہ للبنات</title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu&display=swap');
+                * { font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Urdu Typesetting', serif; }
+                body { direction: rtl; text-align: right; padding: 20px; }
+                .main-header { text-align: center; color: #1e5631; background-color: #f1f8e9; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+            </style>
+            </head>
+            <body>${mainContent.innerHTML}</body>
+            </html>`;
+            var blob = new Blob([htmlContent], {type: 'text/html'});
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'jamia_report.html';
+            link.click();
+        }
+    </script>
+    """
+    st.components.v1.html(html_code, height=50)
+
+# ---------- لاگ ان ----------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
@@ -192,10 +238,15 @@ if not st.session_state.logged_in:
                 st.rerun()
             else: st.error("❌ غلط معلومات، براہ کرم دوبارہ کوشش کریں۔")
 else:
+    # سائیڈ بار میں HTML ڈاؤن لوڈ بٹن شامل کریں
+    with st.sidebar:
+        add_html_download_button()
+        st.divider()
+
     if st.session_state.user_type == "admin":
         menu = ["📊 یومیہ تعلیمی رپورٹ", "🎓 امتحانی تعلیمی رپورٹ", "📜 ماہانہ رزلٹ کارڈ", "🕒 معلمات کا ریکارڈ", "🏛️ ناظمہ پینل (رخصت)", "⚙️ انتظامی کنٹرول"]
     else:
-        menu = ["📝 تعلیمی اندراج", "🎓 امتحانی تعلیمی رپورٹ", "📩 درخواستِ رخصت", "🕒 میری حاضری"]
+        menu = ["📝 تعلیمی اندراج", "🎓 امتحانی تعلیمی رپورٹ", "📩 درخواستِ رخصت", "🕒 میری حاضری", "🔑 پاسورڈ تبدیل کریں"]
         
     m = st.sidebar.radio("📌 مینو منتخب کریں", menu)
 
@@ -295,6 +346,30 @@ else:
         st.header("⚙️ رجسٹریشن اور انتظامی کنٹرول")
         t1, t2 = st.tabs(["👩‍🏫 معلمات مینجمنٹ", "👩‍🎓 طالبات مینجمنٹ"])
         with t1:
+            st.subheader("📌 موجودہ معلمات")
+            teachers = c.execute("SELECT id, name, password FROM teachers WHERE name != 'admin'").fetchall()
+            if teachers:
+                for tid, tname, tpass in teachers:
+                    with st.expander(f"🧑‍🏫 {tname}"):
+                        # Edit form
+                        with st.form(key=f"edit_teacher_{tid}"):
+                            new_name = st.text_input("نام", value=tname)
+                            new_pass = st.text_input("نیا پاسورڈ", value=tpass, type="password")
+                            col_edit, col_del = st.columns(2)
+                            if col_edit.form_submit_button("✔️ ترمیم کریں"):
+                                c.execute("UPDATE teachers SET name=?, password=? WHERE id=?", (new_name, new_pass, tid))
+                                conn.commit()
+                                st.success("معلمہ کی معلومات اپ ڈیٹ ہو گئیں۔")
+                                st.rerun()
+                            if col_del.form_submit_button("❌ حذف کریں"):
+                                c.execute("DELETE FROM teachers WHERE id=?", (tid,))
+                                conn.commit()
+                                st.warning("معلمہ حذف کر دی گئی۔")
+                                st.rerun()
+            else:
+                st.info("کوئی معلمہ موجود نہیں۔")
+            st.divider()
+            st.subheader("➕ نئی معلمہ شامل کریں")
             with st.form("t_reg_form"):
                 tn = st.text_input("معلمہ کا نام")
                 tp = st.text_input("پاسورڈ")
@@ -302,9 +377,41 @@ else:
                     if tn and tp:
                         try:
                             c.execute("INSERT INTO teachers (name, password) VALUES (?,?)", (tn, tp))
-                            conn.commit(); st.success("کامیاب!")
-                        except sqlite3.IntegrityError: st.error("نام پہلے سے موجود ہے!")
+                            conn.commit()
+                            st.success("کامیاب!")
+                        except sqlite3.IntegrityError:
+                            st.error("نام پہلے سے موجود ہے!")
+
         with t2:
+            st.subheader("📌 موجودہ طالبات")
+            students = c.execute("SELECT id, name, father_name, teacher_name FROM students").fetchall()
+            if students:
+                for sid, sname, sfname, tname in students:
+                    with st.expander(f"👩‍🎓 {sname} بنت {sfname}"):
+                        # Edit form
+                        with st.form(key=f"edit_student_{sid}"):
+                            new_name = st.text_input("نام", value=sname)
+                            new_father = st.text_input("ولدیت", value=sfname)
+                            teacher_list = [t[0] for t in c.execute("SELECT name FROM teachers WHERE name!='admin'").fetchall()]
+                            if teacher_list:
+                                new_teacher = st.selectbox("معلمہ", teacher_list, index=teacher_list.index(tname) if tname in teacher_list else 0)
+                            else:
+                                new_teacher = st.text_input("معلمہ", value=tname, disabled=True)
+                            col_edit, col_del = st.columns(2)
+                            if col_edit.form_submit_button("✔️ ترمیم کریں"):
+                                c.execute("UPDATE students SET name=?, father_name=?, teacher_name=? WHERE id=?", (new_name, new_father, new_teacher, sid))
+                                conn.commit()
+                                st.success("طالبہ کی معلومات اپ ڈیٹ ہو گئیں۔")
+                                st.rerun()
+                            if col_del.form_submit_button("❌ حذف کریں"):
+                                c.execute("DELETE FROM students WHERE id=?", (sid,))
+                                conn.commit()
+                                st.warning("طالبہ حذف کر دی گئی۔")
+                                st.rerun()
+            else:
+                st.info("کوئی طالبہ موجود نہیں۔")
+            st.divider()
+            st.subheader("➕ نئی طالبہ شامل کریں")
             with st.form("s_reg_form"):
                 sn, sf = st.columns(2)
                 s_name = sn.text_input("طالبہ کا نام")
@@ -315,7 +422,8 @@ else:
                     if st.form_submit_button("داخل کریں"):
                         if s_name and s_father:
                             c.execute("INSERT INTO students (name, father_name, teacher_name) VALUES (?,?,?)", (s_name, s_father, s_teacher))
-                            conn.commit(); st.success("داخلہ کامیاب!")
+                            conn.commit()
+                            st.success("داخلہ کامیاب!")
 
     elif m == "🕒 معلمات کا ریکارڈ":
         st.header("🕒 حاضری ریکارڈ")
@@ -325,7 +433,6 @@ else:
             cd1, cd2 = st.columns(2)
             cd1.download_button("📥 ریکارڈ ڈاؤن لوڈ کریں", convert_df_to_csv(att_df), "teachers_attendance.csv", "text/csv")
             cd2.markdown("<button onclick='window.print()' style='background: #1e5631; color: white; padding: 8px 15px; border-radius: 5px; border: none; width: 100%; cursor: pointer;'>🖨️ پرنٹ کریں</button>", unsafe_allow_html=True)
-
 
     # ================= TEACHER SECTION =================
     elif m == "📝 تعلیمی اندراج":
@@ -471,10 +578,71 @@ else:
             else: st.info("کوئی ریکارڈ نہیں ملا۔")
 
     elif m == "🕒 میری حاضری":
-        st.header("🕒 آمد و رخصت")
-        if st.button("✅ آمد"):
-            c.execute("INSERT INTO t_attendance (t_name, a_date, arrival) VALUES (?,?,?)", (st.session_state.username, date.today(), datetime.now().strftime("%I:%M %p")))
-            conn.commit(); st.success("ریکارڈ ہو گیا!")
+        st.header("🕒 آمد و رخصت (پاکستانی وقت)")
+        
+        # حاضری کا اختیاری تاریخ اور وقت
+        with st.form("attendance_form"):
+            col_date, col_time_arr, col_time_dep = st.columns(3)
+            att_date = col_date.date_input("تاریخ", date.today())
+            # وقت کے لیے پاکستان کے مطابق ڈیفالٹ ویلیو
+            default_time = get_pakistan_time().strftime("%H:%M")
+            arrival_time = col_time_arr.text_input("آمد کا وقت (HH:MM)", default_time)
+            departure_time = col_time_dep.text_input("رخصت کا وقت (HH:MM)", "")
+            use_custom = st.checkbox("من مانی تاریخ اور وقت استعمال کریں")
+            if use_custom:
+                # صارف کی مرضی سے تاریخ اور وقت تبدیل کر سکتے ہیں
+                att_date = st.date_input("تاریخ (من مانی)", att_date)
+                arrival_time = st.text_input("آمد کا وقت (HH:MM)", arrival_time)
+                departure_time = st.text_input("رخصت کا وقت (HH:MM)", departure_time)
+            
+            submitted = st.form_submit_button("ریکارڈ کریں")
+            if submitted:
+                # چیک کریں کہ آیا پہلے سے ریکارڈ موجود ہے
+                existing = c.execute("SELECT arrival, departure FROM t_attendance WHERE t_name=? AND a_date=?", (st.session_state.username, att_date)).fetchone()
+                if existing:
+                    if arrival_time:
+                        # اپ ڈیٹ آمد
+                        c.execute("UPDATE t_attendance SET arrival=? WHERE t_name=? AND a_date=?", (arrival_time, st.session_state.username, att_date))
+                    if departure_time:
+                        c.execute("UPDATE t_attendance SET departure=? WHERE t_name=? AND a_date=?", (departure_time, st.session_state.username, att_date))
+                    conn.commit()
+                    st.success("حاضری اپ ڈیٹ کر دی گئی۔")
+                else:
+                    # نیا ریکارڈ
+                    if arrival_time:
+                        c.execute("INSERT INTO t_attendance (t_name, a_date, arrival, departure) VALUES (?,?,?,?)",
+                                  (st.session_state.username, att_date, arrival_time, departure_time if departure_time else None))
+                        conn.commit()
+                        st.success("حاضری ریکارڈ ہو گئی۔")
+                    else:
+                        st.warning("براہ کرم آمد کا وقت ضرور درج کریں۔")
+        
+        # پچھلی حاضریاں دکھائیں
+        st.subheader("📋 میری حاضری کی تاریخ")
+        my_att = pd.read_sql_query(f"SELECT a_date as تاریخ, arrival as آمد, departure as رخصت FROM t_attendance WHERE t_name='{st.session_state.username}' ORDER BY a_date DESC", conn)
+        if not my_att.empty:
+            st.dataframe(my_att, use_container_width=True, hide_index=True)
+        else:
+            st.info("ابھی تک کوئی حاضری ریکارڈ نہیں ہے۔")
+
+    elif m == "🔑 پاسورڈ تبدیل کریں":
+        st.header("🔑 پاسورڈ تبدیل کریں")
+        with st.form("change_password_form"):
+            old_pass = st.text_input("پرانہ پاسورڈ", type="password")
+            new_pass = st.text_input("نیا پاسورڈ", type="password")
+            confirm_pass = st.text_input("نیا پاسورڈ دوبارہ", type="password")
+            if st.form_submit_button("پاسورڈ تبدیل کریں"):
+                # تصدیق کریں کہ پرانا پاسورڈ درست ہے
+                user = c.execute("SELECT password FROM teachers WHERE name=?", (st.session_state.username,)).fetchone()
+                if user and user[0] == old_pass:
+                    if new_pass == confirm_pass:
+                        c.execute("UPDATE teachers SET password=? WHERE name=?", (new_pass, st.session_state.username))
+                        conn.commit()
+                        st.success("پاسورڈ کامیابی سے تبدیل ہو گیا۔")
+                    else:
+                        st.error("نیا پاسورڈ اور تصدیق مماثل نہیں۔")
+                else:
+                    st.error("پرانہ پاسورڈ غلط ہے۔")
 
     # 🎓 امتحانی رپورٹ
     elif m == "🎓 امتحانی تعلیمی رپورٹ":
