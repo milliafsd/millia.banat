@@ -1,8 +1,8 @@
-streamlit
-pandas
-sqlite3 (built-in)
-datetime (built-in)
-pytz
+streamlit>=1.25.0
+pandas>=2.0.0
+numpy>=1.25.0
+matplotlib>=3.8.0
+seaborn>=0.12.2
+openpyxl>=3.1.0
+qrcode[pil]
 plotly
-Pillow (PIL)
-hashlib (built-in)
