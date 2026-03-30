@@ -531,24 +531,74 @@ elif selected == "📊 یومیہ تعلیمی رپورٹ (طالبات)" and st
         sel_teacher = st.selectbox("معلمہ / کلاس", teachers_list)
         dept_filter = st.selectbox("شعبہ", ["تمام", "حفظ", "درسِ نظامی", "عصری تعلیم"])
     
+    # ڈیٹا لوڈ کرنے سے پہلے کالمز کی موجودگی چیک کریں
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(hifz_records)")
+    hifz_cols = [row[1] for row in cursor.fetchall()]
+    cursor.execute("PRAGMA table_info(general_education)")
+    gen_cols = [row[1] for row in cursor.fetchall()]
+    conn.close()
+    
     combined_df = pd.DataFrame()
     if dept_filter in ["تمام", "حفظ"]:
-        conn = get_db_connection()
-        query = "SELECT r_date as تاریخ, s_name as نام, mother_name as والدہ کا نام, t_name as معلمہ, 'حفظ' as شعبہ, surah as 'سبق/کتاب', lines as 'کل ستر', sq_m as سبقی_غلطی, m_m as منزل_غلطی, attendance as حاضری FROM hifz_records WHERE r_date BETWEEN ? AND ?"
+        # صرف موجودہ کالمز کو منتخب کریں
+        select_cols = []
+        for col in ['r_date', 's_name', 'mother_name', 't_name', 'surah', 'lines', 'sq_m', 'm_m', 'attendance']:
+            if col in hifz_cols:
+                if col == 'mother_name':
+                    select_cols.append(f"{col} as 'والدہ کا نام'")
+                elif col == 't_name':
+                    select_cols.append(f"{col} as 'معلمہ'")
+                elif col == 's_name':
+                    select_cols.append(f"{col} as 'نام'")
+                elif col == 'r_date':
+                    select_cols.append(f"{col} as 'تاریخ'")
+                elif col == 'surah':
+                    select_cols.append(f"{col} as 'سبق/کتاب'")
+                elif col == 'attendance':
+                    select_cols.append(f"{col} as 'حاضری'")
+                else:
+                    select_cols.append(col)
+        if not select_cols:
+            select_cols = ['*']
+        query = f"SELECT {', '.join(select_cols)} FROM hifz_records WHERE r_date BETWEEN ? AND ?"
         params = [d1, d2]
         if sel_teacher != "تمام":
             query += " AND t_name = ?"
             params.append(sel_teacher)
+        conn = get_db_connection()
         hifz_df = pd.read_sql_query(query, conn, params=params)
         conn.close()
         if not hifz_df.empty:
-            hifz_df['کل_غلطیاں'] = hifz_df['سبقی_غلطی'] + hifz_df['منزل_غلطی']
-            hifz_df['درجہ'] = hifz_df['کل_غلطیاں'].apply(get_grade_from_mistakes)
+            # اگر 'sq_m' اور 'm_m' موجود ہیں تو کل غلطیاں اور درجہ شامل کریں
+            if 'sq_m' in hifz_df.columns and 'm_m' in hifz_df.columns:
+                hifz_df['کل_غلطیاں'] = hifz_df['sq_m'].fillna(0) + hifz_df['m_m'].fillna(0)
+                hifz_df['درجہ'] = hifz_df['کل_غلطیاں'].apply(get_grade_from_mistakes)
+            hifz_df['شعبہ'] = 'حفظ'
             combined_df = pd.concat([combined_df, hifz_df], ignore_index=True)
     
     if dept_filter in ["تمام", "درسِ نظامی", "عصری تعلیم"]:
-        conn = get_db_connection()
-        query = "SELECT r_date as تاریخ, s_name as نام, mother_name as والدہ کا نام, t_name as معلمہ, dept as شعبہ, book_subject as 'سبق/کتاب', today_lesson as 'آج کا سبق', homework as 'ہوم ورک', performance as کارکردگی, '' as کل_غلطیاں, '' as درجہ, attendance as حاضری FROM general_education WHERE r_date BETWEEN ? AND ?"
+        select_cols = []
+        for col in ['r_date', 's_name', 'mother_name', 't_name', 'dept', 'book_subject', 'today_lesson', 'homework', 'performance', 'attendance']:
+            if col in gen_cols:
+                if col == 'mother_name':
+                    select_cols.append(f"{col} as 'والدہ کا نام'")
+                elif col == 't_name':
+                    select_cols.append(f"{col} as 'معلمہ'")
+                elif col == 's_name':
+                    select_cols.append(f"{col} as 'نام'")
+                elif col == 'r_date':
+                    select_cols.append(f"{col} as 'تاریخ'")
+                elif col == 'book_subject':
+                    select_cols.append(f"{col} as 'سبق/کتاب'")
+                elif col == 'attendance':
+                    select_cols.append(f"{col} as 'حاضری'")
+                else:
+                    select_cols.append(col)
+        if not select_cols:
+            select_cols = ['*']
+        query = f"SELECT {', '.join(select_cols)} FROM general_education WHERE r_date BETWEEN ? AND ?"
         params = [d1, d2]
         if sel_teacher != "تمام":
             query += " AND t_name = ?"
@@ -556,9 +606,18 @@ elif selected == "📊 یومیہ تعلیمی رپورٹ (طالبات)" and st
         if dept_filter != "تمام":
             query += " AND dept = ?"
             params.append(dept_filter)
+        conn = get_db_connection()
         gen_df = pd.read_sql_query(query, conn, params=params)
         conn.close()
         if not gen_df.empty:
+            gen_df['شعبہ'] = gen_df.get('dept', '')
+            if 'dept' in gen_df.columns:
+                gen_df = gen_df.drop(columns=['dept'])
+            # اگر کوئی غلطی والے کالم نہ ہوں تو خالی کالم شامل کریں
+            if 'کل_غلطیاں' not in gen_df.columns:
+                gen_df['کل_غلطیاں'] = ''
+            if 'درجہ' not in gen_df.columns:
+                gen_df['درجہ'] = ''
             combined_df = pd.concat([combined_df, gen_df], ignore_index=True)
     
     if combined_df.empty:
@@ -588,25 +647,86 @@ elif selected == "📊 یومیہ تعلیمی رپورٹ (طالبات)" and st
                     del_params_gen.append(dept_filter)
                 c.execute(del_query_gen, del_params_gen)
             
+            # نئے ڈیٹا کو داخل کریں
             for _, row in edited_df.iterrows():
-                if row['شعبہ'] == 'حفظ':
-                    c.execute("""INSERT INTO hifz_records 
-                                (r_date, s_name, mother_name, t_name, surah, lines, sq_m, m_m, attendance)
-                                VALUES (?,?,?,?,?,?,?,?,?)""",
-                              (row['تاریخ'], row['نام'], row['والدہ کا نام'], row['معلمہ'], 
-                               row['سبق/کتاب'], row['کل ستر'] if pd.notna(row['کل ستر']) else 0,
-                               row['سبقی_غلطی'] if 'سبقی_غلطی' in row and pd.notna(row['سبقی_غلطی']) else 0,
-                               row['منزل_غلطی'] if 'منزل_غلطی' in row and pd.notna(row['منزل_غلطی']) else 0,
-                               row['حاضری']))
+                if row.get('شعبہ') == 'حفظ':
+                    # حفظ ٹیبل کے لیے صرف موجودہ کالمز استعمال کریں
+                    insert_cols = []
+                    insert_vals = []
+                    for col in ['تاریخ', 'نام', 'والدہ کا نام', 'معلمہ', 'سبق/کتاب', 'کل ستر', 'سبقی_غلطی', 'منزل_غلطی', 'حاضری']:
+                        if col in row:
+                            if col == 'تاریخ':
+                                insert_cols.append('r_date')
+                                insert_vals.append(row[col])
+                            elif col == 'نام':
+                                insert_cols.append('s_name')
+                                insert_vals.append(row[col])
+                            elif col == 'والدہ کا نام':
+                                insert_cols.append('mother_name')
+                                insert_vals.append(row[col])
+                            elif col == 'معلمہ':
+                                insert_cols.append('t_name')
+                                insert_vals.append(row[col])
+                            elif col == 'سبق/کتاب':
+                                insert_cols.append('surah')
+                                insert_vals.append(row[col])
+                            elif col == 'کل ستر':
+                                insert_cols.append('lines')
+                                val = row[col] if pd.notna(row[col]) else 0
+                                insert_vals.append(val)
+                            elif col == 'سبقی_غلطی':
+                                insert_cols.append('sq_m')
+                                val = row[col] if pd.notna(row[col]) else 0
+                                insert_vals.append(val)
+                            elif col == 'منزل_غلطی':
+                                insert_cols.append('m_m')
+                                val = row[col] if pd.notna(row[col]) else 0
+                                insert_vals.append(val)
+                            elif col == 'حاضری':
+                                insert_cols.append('attendance')
+                                insert_vals.append(row[col])
+                    if insert_cols:
+                        placeholders = ",".join(["?" for _ in insert_cols])
+                        c.execute(f"INSERT INTO hifz_records ({','.join(insert_cols)}) VALUES ({placeholders})", insert_vals)
                 else:
-                    c.execute("""INSERT INTO general_education 
-                                (r_date, s_name, mother_name, t_name, dept, book_subject, today_lesson, homework, performance, attendance)
-                                VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                              (row['تاریخ'], row['نام'], row['والدہ کا نام'], row['معلمہ'], row['شعبہ'],
-                               row['سبق/کتاب'], row['آج کا سبق'] if 'آج کا سبق' in row else '',
-                               row['ہوم ورک'] if 'ہوم ورک' in row else '',
-                               row['کارکردگی'] if 'کارکردگی' in row else '',
-                               row['حاضری']))
+                    # عمومی تعلیم کے لیے
+                    insert_cols = []
+                    insert_vals = []
+                    for col in ['تاریخ', 'نام', 'والدہ کا نام', 'معلمہ', 'شعبہ', 'سبق/کتاب', 'آج کا سبق', 'ہوم ورک', 'کارکردگی', 'حاضری']:
+                        if col in row:
+                            if col == 'تاریخ':
+                                insert_cols.append('r_date')
+                                insert_vals.append(row[col])
+                            elif col == 'نام':
+                                insert_cols.append('s_name')
+                                insert_vals.append(row[col])
+                            elif col == 'والدہ کا نام':
+                                insert_cols.append('mother_name')
+                                insert_vals.append(row[col])
+                            elif col == 'معلمہ':
+                                insert_cols.append('t_name')
+                                insert_vals.append(row[col])
+                            elif col == 'شعبہ':
+                                insert_cols.append('dept')
+                                insert_vals.append(row[col])
+                            elif col == 'سبق/کتاب':
+                                insert_cols.append('book_subject')
+                                insert_vals.append(row[col])
+                            elif col == 'آج کا سبق':
+                                insert_cols.append('today_lesson')
+                                insert_vals.append(row[col] if pd.notna(row[col]) else '')
+                            elif col == 'ہوم ورک':
+                                insert_cols.append('homework')
+                                insert_vals.append(row[col] if pd.notna(row[col]) else '')
+                            elif col == 'کارکردگی':
+                                insert_cols.append('performance')
+                                insert_vals.append(row[col] if pd.notna(row[col]) else '')
+                            elif col == 'حاضری':
+                                insert_cols.append('attendance')
+                                insert_vals.append(row[col])
+                    if insert_cols:
+                        placeholders = ",".join(["?" for _ in insert_cols])
+                        c.execute(f"INSERT INTO general_education ({','.join(insert_cols)}) VALUES ({placeholders})", insert_vals)
             conn.commit()
             conn.close()
             log_audit(st.session_state.username, "Edited Daily Report", f"Date range {d1} to {d2}, Teacher {sel_teacher}")
@@ -617,7 +737,8 @@ elif selected == "📊 یومیہ تعلیمی رپورٹ (طالبات)" and st
         st.download_button("📥 HTML رپورٹ ڈاؤن لوڈ کریں", html_report, "daily_report_girls.html", "text/html")
         if st.button("🖨️ پرنٹ کریں"):
             st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html_report}`);w.print();</script>", height=0)
-
+        
+       
 # 8.3 امتحانی نظام (ایڈمن)
 elif selected == "🎓 امتحانی نظام" and st.session_state.user_type == "admin":
     st.header("🎓 امتحانی نظام (طالبات)")
