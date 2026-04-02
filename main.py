@@ -1052,7 +1052,6 @@ try:
 except Exception as e:
     st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {str(e)}۔ براہ کرم ایڈمن سے رابطہ کریں۔")
     students_df = pd.DataFrame()
-        conn.close()
         if not students_df.empty:
             st.dataframe(students_df, use_container_width=True)
             st.info("شعبہ جات اور اساتذہ کی تبدیلی کے لیے 'نیا طالبہ داخل کریں' والے فارم میں ترمیم کریں یا حذف کر کے دوبارہ داخل کریں۔")
