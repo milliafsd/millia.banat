@@ -52,7 +52,7 @@ def init_db():
     add_column_if_not_exists('teachers', 'photo', 'TEXT')
     add_column_if_not_exists('teachers', 'joining_date', 'DATE')
     
-    # طالبات (اب teacher_name نہیں ہوگا، اس کی بجائے student_teachers)
+    # طالبات
     c.execute('''CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
@@ -87,24 +87,21 @@ def init_db():
         FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
         FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
     )''')
+    # یقینی بنائیں کہ dept کالم موجود ہے
+    add_column_if_not_exists('student_teachers', 'dept', 'TEXT')
     
     # پرانے ڈیٹا کو منتقل کریں (اگر پہلے سے teacher_name موجود ہو)
     if column_exists('students', 'teacher_name'):
-        # طلبہ کی فہرست
         old_students = c.execute("SELECT id, teacher_name FROM students WHERE teacher_name IS NOT NULL AND teacher_name != ''").fetchall()
         for student_id, teacher_name in old_students:
-            # اساتذہ کی آئی ڈی معلوم کریں
             teacher = c.execute("SELECT id FROM teachers WHERE name=?", (teacher_name,)).fetchone()
             if teacher:
                 teacher_id = teacher[0]
-                # شعبہ معلوم کریں (پرانے system میں dept ٹیبل میں تھا یا student_depts میں)
                 dept_row = c.execute("SELECT dept FROM student_depts WHERE student_id=?", (student_id,)).fetchone()
-                dept = dept_row[0] if dept_row else "حفظ"  # ڈیفالٹ
-                # student_teachers میں ڈالیں
+                dept = dept_row[0] if dept_row else "حفظ"
                 c.execute("INSERT INTO student_teachers (student_id, teacher_id, dept) VALUES (?,?,?)",
                           (student_id, teacher_id, dept))
         conn.commit()
-        # اب پرانا کالم ہٹا سکتے ہیں
         try:
             c.execute("ALTER TABLE students DROP COLUMN teacher_name")
         except:
@@ -578,7 +575,7 @@ if selected == "📊 ایڈمن ڈیش بورڈ" and st.session_state.user_type 
     col2.metric("کل معلمات", total_teachers)
     conn.close()
 
-# 8.2 یومیہ تعلیمی رپورٹ (طالبات) - مضبوط ورژن
+# 8.2 یومیہ تعلیمی رپورٹ (طالبات) - مختصر (پہلے جیسا)
 elif selected == "📊 یومیہ تعلیمی رپورٹ (طالبات)" and st.session_state.user_type == "admin":
     st.header("📊 یومیہ تعلیمی رپورٹ (طالبات) - ترمیم، حذف، اضافہ")
     
@@ -774,7 +771,7 @@ elif selected == "📊 یومیہ تعلیمی رپورٹ (طالبات)" and st
         if st.button("🖨️ پرنٹ کریں"):
             st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html_report}`);w.print();</script>", height=0)
 
-# 8.3 امتحانی نظام (ایڈمن)
+# 8.3 امتحانی نظام (ایڈمن) - مختصر (پہلے جیسا)
 elif selected == "🎓 امتحانی نظام" and st.session_state.user_type == "admin":
     st.header("🎓 امتحانی نظام (طالبات)")
     tab1, tab2 = st.tabs(["پینڈنگ امتحانات", "مکمل شدہ"])
@@ -838,7 +835,7 @@ elif selected == "🎓 امتحانی نظام" and st.session_state.user_type =
         else:
             st.info("کوئی مکمل شدہ امتحان نہیں")
 
-# 8.4 ماہانہ رزلٹ کارڈ (طالبات)
+# 8.4 ماہانہ رزلٹ کارڈ (طالبات) - مختصر (پہلے جیسا)
 elif selected == "📜 ماہانہ رزلٹ کارڈ" and st.session_state.user_type == "admin":
     st.header("📜 ماہانہ رزلٹ کارڈ (طالبات)")
     conn = get_db_connection()
@@ -972,7 +969,7 @@ elif selected == "🏛️ رخصت کی منظوری" and st.session_state.user_
                     conn.close()
                     st.rerun()
 
-# 8.8 یوزر مینجمنٹ (طالبات/معلمات) - نئے نظام کے ساتھ
+# 8.8 یوزر مینجمنٹ (طالبات/معلمات) - درست شدہ ورژن
 elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and st.session_state.user_type == "admin":
     st.header("👥 یوزر مینجمنٹ")
     tab1, tab2 = st.tabs(["معلمات", "طالبات"])
@@ -1037,21 +1034,25 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
     with tab2:
         st.subheader("موجودہ طالبات (متعدد شعبے اور اساتذہ)")
         conn = get_db_connection()
-        students_df = pd.read_sql_query("""
-            SELECT s.id, s.name, s.father_name, s.mother_name, s.dob, s.admission_date, 
-                   s.exit_date, s.exit_reason, s.id_card, s.phone, s.address, 
-                   s.class, s.section,
-                   GROUP_CONCAT(DISTINCT sd.dept, ', ') as depts,
-                   GROUP_CONCAT(DISTINCT t.name || ' (' || st.dept || ')', ', ') as teachers
-            FROM students s
-            LEFT JOIN student_depts sd ON s.id = sd.student_id
-            LEFT JOIN student_teachers st ON s.id = st.student_id
-            LEFT JOIN teachers t ON st.teacher_id = t.id
-            GROUP BY s.id
-        """, conn)
+        # محفوظ کوئری: اگر student_teachers موجود نہ ہو تو صرف بنیادی معلومات دکھائیں
+        try:
+            students_df = pd.read_sql_query("""
+                SELECT s.id, s.name, s.father_name, s.mother_name, s.dob, s.admission_date, 
+                       s.exit_date, s.exit_reason, s.id_card, s.phone, s.address, 
+                       s.class, s.section,
+                       GROUP_CONCAT(DISTINCT sd.dept, ', ') as depts,
+                       GROUP_CONCAT(DISTINCT t.name || ' (' || st.dept || ')', ', ') as teachers
+                FROM students s
+                LEFT JOIN student_depts sd ON s.id = sd.student_id
+                LEFT JOIN student_teachers st ON s.id = st.student_id
+                LEFT JOIN teachers t ON st.teacher_id = t.id
+                GROUP BY s.id
+            """, conn)
+        except Exception as e:
+            st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {str(e)}۔ براہ کرم ایڈمن سے رابطہ کریں۔")
+            students_df = pd.DataFrame()
         conn.close()
         if not students_df.empty:
-            # ڈیٹا ایڈیٹر میں صرف بنیادی معلومات دکھائیں (اساتذہ اور شعبے کی ایڈیٹنگ الگ سے کریں گے)
             st.dataframe(students_df, use_container_width=True)
             st.info("شعبہ جات اور اساتذہ کی تبدیلی کے لیے 'نیا طالبہ داخل کریں' والے فارم میں ترمیم کریں یا حذف کر کے دوبارہ داخل کریں۔")
         else:
@@ -1068,7 +1069,6 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
                     admission_date = st.date_input("تاریخ داخلہ", date.today())
                 with col2:
                     st.write("شعبہ جات اور متعلقہ معلمہ:")
-                    # ہر شعبے کے لیے معلمہ کا انتخاب
                     conn = get_db_connection()
                     all_teachers = conn.execute("SELECT id, name FROM teachers WHERE name!='admin'").fetchall()
                     conn.close()
@@ -1119,7 +1119,6 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
                                       (name, father, mother, dob, admission_date, exit_date, exit_reason,
                                        id_card, phone, address, class_name, section, photo_path))
                             student_id = c.lastrowid
-                            # شعبے اور اساتذہ داخل کریں
                             for dept, teacher_name in dept_teacher_map.items():
                                 teacher_id = teachers_dict[teacher_name]
                                 c.execute("INSERT INTO student_depts (student_id, dept) VALUES (?,?)", (student_id, dept))
@@ -1135,7 +1134,7 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
                     else:
                         st.error("نام، والد کا نام اور کم از کم ایک شعبہ کے ساتھ معلمہ کا انتخاب ضروری ہے")
 
-# 8.9 ٹائم ٹیبل مینجمنٹ (ایڈمن)
+# 8.9 ٹائم ٹیبل مینجمنٹ (ایڈمن) - مختصر (پہلے جیسا)
 elif selected == "📚 ٹائم ٹیبل مینجمنٹ" and st.session_state.user_type == "admin":
     st.header("📚 ٹائم ٹیبل مینجمنٹ (معلمات)")
     conn = get_db_connection()
@@ -1191,7 +1190,7 @@ elif selected == "📚 ٹائم ٹیبل مینجمنٹ" and st.session_state.us
                     conn.close()
                     st.rerun()
 
-# 8.10 پاسورڈ تبدیل کریں (ایڈمن اور معلمہ)
+# 8.10 پاسورڈ تبدیل کریں (ایڈمن اور معلمہ) - مختصر (پہلے جیسا)
 elif selected == "🔑 پاسورڈ تبدیل کریں":
     st.header("🔑 پاسورڈ تبدیل کریں")
     if st.session_state.user_type == "admin":
@@ -1225,7 +1224,7 @@ elif selected == "🔑 پاسورڈ تبدیل کریں":
             else:
                 st.error("نیا پاسورڈ اور تصدیق ایک جیسی ہونی چاہیے")
 
-# 8.11 عملہ نگرانی و شکایات
+# 8.11 عملہ نگرانی و شکایات - مختصر (پہلے جیسا)
 elif selected == "📋 عملہ نگرانی و شکایات" and st.session_state.user_type == "admin":
     st.header("📋 عملہ نگرانی و شکایات")
     
@@ -1359,7 +1358,6 @@ elif selected == "⚙️ بیک اپ & سیٹنگز" and st.session_state.user_t
 # ==================== 9. استاد کے سیکشن ====================
 # 9.1 روزانہ سبق اندراج (طالبات) - شعبہ کے ساتھ
 if selected == "📝 روزانہ سبق اندراج (طالبات)" and st.session_state.user_type == "teacher":
-    # استاد کی آئی ڈی معلوم کریں
     conn = get_db_connection()
     teacher_id = conn.execute("SELECT id FROM teachers WHERE name=?", (st.session_state.username,)).fetchone()[0]
     conn.close()
@@ -1559,7 +1557,6 @@ elif selected == "🎓 امتحانی درخواست" and st.session_state.user_
         st.warning("کوئی طالبہ نہیں")
     else:
         with st.form("exam_request"):
-            # ہر طالبہ اپنے شعبے کے ساتھ دکھائی دے گی
             s_list = [f"{s[0]} بنت {s[1]} ({s[2]})" for s in students]
             sel = st.selectbox("طالبہ", s_list)
             s_name, rest = sel.split(" بنت ")
@@ -1589,7 +1586,7 @@ elif selected == "🎓 امتحانی درخواست" and st.session_state.user_
                 conn.close()
                 st.success("درخواست بھیج دی گئی")
 
-# 9.3 رخصت کی درخواست (معلمہ)
+# 9.3 رخصت کی درخواست (معلمہ) - پہلے جیسا
 elif selected == "📩 رخصت کی درخواست" and st.session_state.user_type == "teacher":
     st.header("📩 رخصت کی درخواست")
     with st.form("leave_request_form"):
@@ -1614,7 +1611,7 @@ elif selected == "📩 رخصت کی درخواست" and st.session_state.user_t
             else:
                 st.error("براہ کرم وجہ تحریر کریں")
 
-# 9.4 میری حاضری (معلمہ)
+# 9.4 میری حاضری (معلمہ) - پہلے جیسا
 elif selected == "🕒 میری حاضری" and st.session_state.user_type == "teacher":
     st.header("🕒 میری حاضری")
     today = date.today()
@@ -1649,7 +1646,7 @@ elif selected == "🕒 میری حاضری" and st.session_state.user_type == "t
     else:
         st.success(f"آمد: {rec[0]} | رخصت: {rec[1]}")
 
-# 9.5 میرا ٹائم ٹیبل (معلمہ)
+# 9.5 میرا ٹائم ٹیبل (معلمہ) - پہلے جیسا
 elif selected == "📚 میرا ٹائم ٹیبل" and st.session_state.user_type == "teacher":
     st.header("📚 میرا ٹائم ٹیبل")
     conn = get_db_connection()
