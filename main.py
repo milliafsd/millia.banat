@@ -968,7 +968,7 @@ elif selected == "🏛️ رخصت کی منظوری" and st.session_state.user_
                     conn.commit()
                     conn.close()
                     st.rerun()
-
+                    
 # 8.8 یوزر مینجمنٹ (طالبات/معلمات) - درست شدہ ورژن
 elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and st.session_state.user_type == "admin":
     st.header("👥 یوزر مینجمنٹ")
@@ -1034,24 +1034,24 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
     with tab2:
         st.subheader("موجودہ طالبات (متعدد شعبے اور اساتذہ)")
         conn = get_db_connection()
-        # محفوظ کوئری: اگر student_teachers موجود نہ ہو تو صرف بنیادی معلومات دکھائیں
-        # محفوظ کوئری - DISTINCT کے بغیر (کیونکہ ہر شعبہ ایک بار آئے گا)
-try:
-    students_df = pd.read_sql_query("""
-        SELECT s.id, s.name, s.father_name, s.mother_name, s.dob, s.admission_date, 
-               s.exit_date, s.exit_reason, s.id_card, s.phone, s.address, 
-               s.class, s.section,
-               GROUP_CONCAT(sd.dept, ', ') as depts,
-               GROUP_CONCAT(t.name || ' (' || st.dept || ')', ', ') as teachers
-        FROM students s
-        LEFT JOIN student_depts sd ON s.id = sd.student_id
-        LEFT JOIN student_teachers st ON s.id = st.student_id
-        LEFT JOIN teachers t ON st.teacher_id = t.id
-        GROUP BY s.id
-    """, conn)
-except Exception as e:
-    st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {str(e)}۔ براہ کرم ایڈمن سے رابطہ کریں۔")
-    students_df = pd.DataFrame()
+        # درست شدہ کوئری (DISTINCT کے بغیر)
+        try:
+            students_df = pd.read_sql_query("""
+                SELECT s.id, s.name, s.father_name, s.mother_name, s.dob, s.admission_date, 
+                       s.exit_date, s.exit_reason, s.id_card, s.phone, s.address, 
+                       s.class, s.section,
+                       GROUP_CONCAT(sd.dept, ', ') as depts,
+                       GROUP_CONCAT(t.name || ' (' || st.dept || ')', ', ') as teachers
+                FROM students s
+                LEFT JOIN student_depts sd ON s.id = sd.student_id
+                LEFT JOIN student_teachers st ON s.id = st.student_id
+                LEFT JOIN teachers t ON st.teacher_id = t.id
+                GROUP BY s.id
+            """, conn)
+        except Exception as e:
+            st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {str(e)}۔ براہ کرم ایڈمن سے رابطہ کریں۔")
+            students_df = pd.DataFrame()
+        conn.close()
         if not students_df.empty:
             st.dataframe(students_df, use_container_width=True)
             st.info("شعبہ جات اور اساتذہ کی تبدیلی کے لیے 'نیا طالبہ داخل کریں' والے فارم میں ترمیم کریں یا حذف کر کے دوبارہ داخل کریں۔")
@@ -1133,7 +1133,7 @@ except Exception as e:
                             conn.close()
                     else:
                         st.error("نام، والد کا نام اور کم از کم ایک شعبہ کے ساتھ معلمہ کا انتخاب ضروری ہے")
-
+                        
 # 8.9 ٹائم ٹیبل مینجمنٹ (ایڈمن) - مختصر (پہلے جیسا)
 elif selected == "📚 ٹائم ٹیبل مینجمنٹ" and st.session_state.user_type == "admin":
     st.header("📚 ٹائم ٹیبل مینجمنٹ (معلمات)")
