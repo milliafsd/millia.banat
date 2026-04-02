@@ -1035,22 +1035,23 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
         st.subheader("موجودہ طالبات (متعدد شعبے اور اساتذہ)")
         conn = get_db_connection()
         # محفوظ کوئری: اگر student_teachers موجود نہ ہو تو صرف بنیادی معلومات دکھائیں
-        try:
-            students_df = pd.read_sql_query("""
-                SELECT s.id, s.name, s.father_name, s.mother_name, s.dob, s.admission_date, 
-                       s.exit_date, s.exit_reason, s.id_card, s.phone, s.address, 
-                       s.class, s.section,
-                       GROUP_CONCAT(DISTINCT sd.dept, ', ') as depts,
-                       GROUP_CONCAT(DISTINCT t.name || ' (' || st.dept || ')', ', ') as teachers
-                FROM students s
-                LEFT JOIN student_depts sd ON s.id = sd.student_id
-                LEFT JOIN student_teachers st ON s.id = st.student_id
-                LEFT JOIN teachers t ON st.teacher_id = t.id
-                GROUP BY s.id
-            """, conn)
-        except Exception as e:
-            st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {str(e)}۔ براہ کرم ایڈمن سے رابطہ کریں۔")
-            students_df = pd.DataFrame()
+        # محفوظ کوئری - DISTINCT کے بغیر (کیونکہ ہر شعبہ ایک بار آئے گا)
+try:
+    students_df = pd.read_sql_query("""
+        SELECT s.id, s.name, s.father_name, s.mother_name, s.dob, s.admission_date, 
+               s.exit_date, s.exit_reason, s.id_card, s.phone, s.address, 
+               s.class, s.section,
+               GROUP_CONCAT(sd.dept, ', ') as depts,
+               GROUP_CONCAT(t.name || ' (' || st.dept || ')', ', ') as teachers
+        FROM students s
+        LEFT JOIN student_depts sd ON s.id = sd.student_id
+        LEFT JOIN student_teachers st ON s.id = st.student_id
+        LEFT JOIN teachers t ON st.teacher_id = t.id
+        GROUP BY s.id
+    """, conn)
+except Exception as e:
+    st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {str(e)}۔ براہ کرم ایڈمن سے رابطہ کریں۔")
+    students_df = pd.DataFrame()
         conn.close()
         if not students_df.empty:
             st.dataframe(students_df, use_container_width=True)
