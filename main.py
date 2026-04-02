@@ -8,7 +8,7 @@ import os
 import hashlib
 
 # ==================== 1. ڈیٹا بیس سیٹ اپ ====================
-DB_NAME = 'jamia_millia_girls.db'   # طالبات کے لیے الگ ڈیٹا بیس
+DB_NAME = 'jamia_millia_girls.db'
 
 def get_db_connection():
     return sqlite3.connect(DB_NAME, check_same_thread=False)
@@ -39,7 +39,7 @@ def init_db():
     conn = get_db_connection()
     c = conn.cursor()
     
-    # اساتذہ (معلمات)
+    # اساتذہ
     c.execute('''CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE,
@@ -52,7 +52,7 @@ def init_db():
     add_column_if_not_exists('teachers', 'photo', 'TEXT')
     add_column_if_not_exists('teachers', 'joining_date', 'DATE')
     
-    # طالبات (اب dept کالم نہیں ہوگا، اس کے بجائے student_depts ٹیبل)
+    # طالبات (اب dept کالم نہیں)
     c.execute('''CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
@@ -70,7 +70,6 @@ def init_db():
         class TEXT,
         section TEXT
     )''')
-    # اگر پرانی ڈیٹا بیس میں dept کالم ہے تو اسے ہٹا نہیں رہے، بلکہ نظر انداز کریں گے
     
     # نیا ٹیبل: طالب علم کے متعدد شعبے
     c.execute('''CREATE TABLE IF NOT EXISTS student_depts (
@@ -80,23 +79,20 @@ def init_db():
         FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
     )''')
     
-    # اگر پرانی ڈیٹا بیس میں students ٹیبل میں dept کالم موجود ہے تو اسے student_depts میں منتقل کریں
+    # پرانے ڈیٹا کو منتقل کریں (اگر پہلے سے dept کالم موجود ہو)
     if column_exists('students', 'dept'):
-        # ان طلبہ کے لیے جن کا dept پہلے سے موجود ہے، انہیں student_depts میں ڈالیں
         existing = c.execute("SELECT id, dept FROM students WHERE dept IS NOT NULL AND dept != ''").fetchall()
         for student_id, dept in existing:
-            # چیک کریں کہ یہ اندراج پہلے سے موجود تو نہیں
             chk = c.execute("SELECT 1 FROM student_depts WHERE student_id=? AND dept=?", (student_id, dept)).fetchone()
             if not chk:
                 c.execute("INSERT INTO student_depts (student_id, dept) VALUES (?,?)", (student_id, dept))
         conn.commit()
-        # اب dept کالم کو ہٹا سکتے ہیں (اختیاری)
         try:
             c.execute("ALTER TABLE students DROP COLUMN dept")
         except:
             pass
     
-    # حفظ ریکارڈ (اب شعبہ الگ سے نہیں، بلکہ طالبہ کے شعبے سے معلوم ہوگا)
+    # حفظ ریکارڈ
     c.execute('''CREATE TABLE IF NOT EXISTS hifz_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         r_date DATE,
@@ -117,7 +113,7 @@ def init_db():
         lines INTEGER
     )''')
     
-    # عمومی تعلیم (درسِ نظامی اور عصری تعلیم)
+    # عمومی تعلیم
     c.execute('''CREATE TABLE IF NOT EXISTS general_education (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         r_date DATE,
@@ -131,7 +127,7 @@ def init_db():
         performance TEXT
     )''')
     
-    # معلمات کی حاضری
+    # حاضری
     c.execute('''CREATE TABLE IF NOT EXISTS t_attendance (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         t_name TEXT,
@@ -156,7 +152,7 @@ def init_db():
         notification_seen INTEGER DEFAULT 0
     )''')
     
-    # امتحانات (اب شعبہ بھی شامل)
+    # امتحانات
     c.execute('''CREATE TABLE IF NOT EXISTS exams (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         s_name TEXT,
@@ -217,7 +213,7 @@ def init_db():
         details TEXT
     )''')
     
-    # عملہ نگرانی و شکایات
+    # عملہ نگرانی
     c.execute('''CREATE TABLE IF NOT EXISTS staff_monitoring (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         staff_name TEXT,
@@ -232,7 +228,7 @@ def init_db():
     
     conn.commit()
     
-    # ڈیفالٹ ایڈمن (پاسورڈ ہیش شدہ)
+    # ڈیفالٹ ایڈمن
     admin_hash = hash_password("jamia123")
     admin_exists = c.execute("SELECT 1 FROM teachers WHERE name='admin'").fetchone()
     if not admin_exists:
@@ -760,7 +756,7 @@ elif selected == "📊 یومیہ تعلیمی رپورٹ (طالبات)" and st
         if st.button("🖨️ پرنٹ کریں"):
             st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html_report}`);w.print();</script>", height=0)
 
-# 8.3 امتحانی نظام (ایڈمن) - اسی طرح شعبہ کے ساتھ
+# 8.3 امتحانی نظام (ایڈمن)
 elif selected == "🎓 امتحانی نظام" and st.session_state.user_type == "admin":
     st.header("🎓 امتحانی نظام (طالبات)")
     tab1, tab2 = st.tabs(["پینڈنگ امتحانات", "مکمل شدہ"])
@@ -828,7 +824,6 @@ elif selected == "🎓 امتحانی نظام" and st.session_state.user_type =
 elif selected == "📜 ماہانہ رزلٹ کارڈ" and st.session_state.user_type == "admin":
     st.header("📜 ماہانہ رزلٹ کارڈ (طالبات)")
     conn = get_db_connection()
-    # اب طالب علم کے شعبے student_depts سے لیں گے
     students_list = conn.execute("""
         SELECT s.id, s.name, s.father_name, GROUP_CONCAT(sd.dept, ', ') as depts
         FROM students s
@@ -844,7 +839,6 @@ elif selected == "📜 ماہانہ رزلٹ کارڈ" and st.session_state.user
         s_name, rest = sel.split(" بنت ")
         father_name, depts_str = rest.split(" (")
         depts_str = depts_str.replace(")", "")
-        # صارف شعبہ بھی منتخب کر سکتا ہے اگر متعدد ہوں
         dept_options = depts_str.split(", ")
         if len(dept_options) > 1:
             selected_dept = st.selectbox("شعبہ منتخب کریں", dept_options)
@@ -1025,7 +1019,6 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
     with tab2:
         st.subheader("موجودہ طالبات (متعدد شعبے)")
         conn = get_db_connection()
-        # طلبہ کی فہرست ان کے شعبوں کے ساتھ
         students_df = pd.read_sql_query("""
             SELECT s.id, s.name, s.father_name, s.mother_name, s.dob, s.admission_date, 
                    s.exit_date, s.exit_reason, s.id_card, s.phone, s.address, 
@@ -1041,11 +1034,9 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
             if st.button("طالبات میں تبدیلیاں محفوظ کریں"):
                 conn = get_db_connection()
                 c = conn.cursor()
-                # پہلے تمام طلبہ کو حذف کریں (بعد میں دوبارہ ڈالیں گے)
                 c.execute("DELETE FROM students")
                 c.execute("DELETE FROM student_depts")
                 for _, row in edited_students.iterrows():
-                    # students ٹیبل میں داخلہ
                     c.execute("""INSERT INTO students 
                                 (id, name, father_name, mother_name, dob, admission_date, exit_date, exit_reason,
                                  id_card, phone, address, teacher_name, class, section)
@@ -1053,7 +1044,6 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
                               (row['id'], row['name'], row['father_name'], row['mother_name'], row['dob'], row['admission_date'],
                                row['exit_date'], row['exit_reason'], row['id_card'], row['phone'], row['address'],
                                row['teacher_name'], row['class'], row['section']))
-                    # شعبہ جات کو الگ کریں اور student_depts میں ڈالیں
                     if 'depts' in row and pd.notna(row['depts']) and row['depts']:
                         for d in row['depts'].split(', '):
                             c.execute("INSERT INTO student_depts (student_id, dept) VALUES (?,?)", (row['id'], d))
@@ -1109,7 +1099,6 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
                                 photo_path = f"uploads/student_{name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
                                 with open(photo_path, "wb") as f:
                                     f.write(photo.getbuffer())
-                            # students ٹیبل میں داخلہ
                             c.execute("""INSERT INTO students 
                                         (name, father_name, mother_name, dob, admission_date, exit_date, exit_reason,
                                          id_card, phone, address, teacher_name, class, section, photo)
@@ -1117,7 +1106,6 @@ elif selected == "👥 یوزر مینجمنٹ (طالبات/معلمات)" and 
                                       (name, father, mother, dob, admission_date, exit_date, exit_reason,
                                        id_card, phone, address, teacher, class_name, section, photo_path))
                             student_id = c.lastrowid
-                            # شعبہ جات کا اندراج
                             for dept in depts_selected:
                                 c.execute("INSERT INTO student_depts (student_id, dept) VALUES (?,?)", (student_id, dept))
                             conn.commit()
@@ -1281,15 +1269,12 @@ elif selected == "📋 عملہ نگرانی و شکایات" and st.session_sta
             st.info("کوئی ریکارڈ موجود نہیں")
         else:
             st.dataframe(df, use_container_width=True)
-            
             csv = convert_df_to_csv(df)
             st.download_button("📥 CSV ڈاؤن لوڈ کریں", csv, "staff_monitoring.csv", "text/csv")
-            
             html_report = generate_html_report(df, "عملہ نگرانی و شکایات رپورٹ")
             st.download_button("📥 HTML رپورٹ ڈاؤن لوڈ کریں", html_report, "staff_monitoring_report.html", "text/html")
             if st.button("🖨️ پرنٹ کریں"):
                 st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html_report}`);w.print();</script>", height=0)
-            
             with st.expander("⚠️ ریکارڈ حذف کریں"):
                 record_id = st.number_input("ریکارڈ ID درج کریں", min_value=1, step=1)
                 if st.button("حذف کریں"):
