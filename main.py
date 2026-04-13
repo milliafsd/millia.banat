@@ -11,7 +11,7 @@ import zipfile
 import io
 
 # ==================== 1. ڈیٹا بیس سیٹ اپ ====================
-DB_NAME = 'jamia_millia_girls.db'
+DB_NAME = 'old.jamia_millia_banat_v1.db'
 
 def get_db_connection():
     return sqlite3.connect(DB_NAME, check_same_thread=False)
